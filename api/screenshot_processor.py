@@ -24,16 +24,30 @@ class ScreenshotProcessor:
         }
 
     def process_image(self, image_path: str, output_path: str) -> None:
-        logger.info(f"Processing: {image_path}")
+        self.process_images([image_path], output_path)
 
-        img = cv2.imread(image_path)
-        if img is None:
-            raise ValueError(f"Could not read image: {image_path}")
+    def process_images(self, image_paths: List[str], output_path: str) -> None:
+        logger.info(f"Processing {len(image_paths)} images")
 
-        text_blocks = self.extract_text_with_layout(img)
-        logger.info(f"Extracted {len(text_blocks)} blocks")
+        all_text_blocks = []
 
-        self.create_word_document(text_blocks, output_path)
+        for idx, image_path in enumerate(image_paths):
+            logger.info(f"Processing image {idx + 1}/{len(image_paths)}: {image_path}")
+
+            img = cv2.imread(image_path)
+            if img is None:
+                raise ValueError(f"Could not read image: {image_path}")
+
+            text_blocks = self.extract_text_with_layout(img)
+            logger.info(f"Extracted {len(text_blocks)} blocks from image {idx + 1}")
+
+            if idx > 0 and text_blocks:
+                text_blocks[0]['is_page_break'] = True
+
+            all_text_blocks.extend(text_blocks)
+
+        logger.info(f"Total blocks extracted: {len(all_text_blocks)}")
+        self.create_word_document(all_text_blocks, output_path)
         logger.info(f"Created: {output_path}")
 
     def extract_text_with_layout(self, img: np.ndarray) -> List[Dict]:
@@ -145,6 +159,9 @@ class ScreenshotProcessor:
 
     def _add_paragraph_to_document(self, doc: Document, block: Dict, index: int,
                                    last_top: int, last_block_num: int) -> None:
+        if block.get('is_page_break', False):
+            doc.add_page_break()
+
         text = block['text']
         style_type = block['style']
 

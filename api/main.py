@@ -2,6 +2,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pathlib import Path
+from typing import List
 import uuid
 import logging
 
@@ -35,33 +36,39 @@ processor = ScreenshotProcessor()
 async def root():
     return {"message": "Screenshot to Docs API is running"}
 
-@app.post("/process-screenshot")
-async def process_screenshot(file: UploadFile = File(...)):
+@app.post("/process-screenshots")
+async def process_screenshots(files: List[UploadFile] = File(...)):
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+
     file_id = str(uuid.uuid4())
-    upload_path = None
+    upload_paths = []
 
     try:
-        if not file.content_type or not file.content_type.startswith("image/"):
-            raise HTTPException(status_code=400, detail="File must be an image")
+        for file in files:
+            if not file.content_type or not file.content_type.startswith("image/"):
+                raise HTTPException(status_code=400, detail=f"File {file.filename} must be an image")
 
-        if not file.filename:
-            raise HTTPException(status_code=400, detail="Filename is required")
+            if not file.filename:
+                raise HTTPException(status_code=400, detail="Filename is required")
 
-        file_extension = Path(file.filename).suffix.lower()
-        if file_extension not in {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'}:
-            raise HTTPException(status_code=400, detail="Unsupported image format")
+            file_extension = Path(file.filename).suffix.lower()
+            if file_extension not in {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'}:
+                raise HTTPException(status_code=400, detail=f"Unsupported format: {file.filename}")
 
-        upload_path = UPLOAD_DIR / f"{file_id}{file_extension}"
-        upload_path.write_bytes(await file.read())
-        logger.info(f"Uploaded: {upload_path}")
+            upload_path = UPLOAD_DIR / f"{file_id}_{len(upload_paths)}{file_extension}"
+            upload_path.write_bytes(await file.read())
+            upload_paths.append(upload_path)
+            logger.info(f"Uploaded: {upload_path}")
 
         output_path = OUTPUT_DIR / f"{file_id}.docx"
-        processor.process_image(str(upload_path), str(output_path))
+        processor.process_images([str(p) for p in upload_paths], str(output_path))
         logger.info(f"Generated: {output_path}")
 
         return {
             "success": True,
             "file_id": file_id,
+            "processed_count": len(upload_paths),
             "download_url": f"/download/{file_id}"
         }
 
@@ -69,10 +76,11 @@ async def process_screenshot(file: UploadFile = File(...)):
         raise
     except Exception as e:
         logger.error(f"Error: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to process screenshot: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to process screenshots: {str(e)}")
     finally:
-        if upload_path and upload_path.exists():
-            upload_path.unlink(missing_ok=True)
+        for upload_path in upload_paths:
+            if upload_path.exists():
+                upload_path.unlink(missing_ok=True)
 
 @app.get("/download/{file_id}")
 async def download_file(file_id: str):

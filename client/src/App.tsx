@@ -13,40 +13,42 @@ interface ApiErrorResponse {
 }
 
 function App() {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<MessageType>('info')
   const [downloadUrl, setDownloadUrl] = useState('')
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (file) {
-      setSelectedFile(file)
+    const files = event.target.files
+    if (files && files.length > 0) {
+      setSelectedFiles(Array.from(files))
       setMessage('')
       setDownloadUrl('')
     }
   }
 
   const handleUpload = async () => {
-    if (!selectedFile) {
-      setMessage('Please select a file first')
+    if (selectedFiles.length === 0) {
+      setMessage('Please select at least one file')
       setMessageType('danger')
       return
     }
 
     setUploading(true)
-    setMessage('Processing screenshot...')
+    setMessage(`Processing ${selectedFiles.length} screenshot${selectedFiles.length > 1 ? 's' : ''}...`)
     setMessageType('info')
 
     const formData = new FormData()
-    formData.append('file', selectedFile)
+    selectedFiles.forEach(file => {
+      formData.append('files', file)
+    })
 
     try {
-      const response = await axios.post(`${API_URL}/process-screenshot`, formData)
+      const response = await axios.post(`${API_URL}/process-screenshots`, formData)
 
       if (response.data.success) {
-        setMessage('Screenshot processed successfully!')
+        setMessage(`Successfully processed ${response.data.processed_count} screenshot${response.data.processed_count > 1 ? 's' : ''}!`)
         setMessageType('success')
         setDownloadUrl(`${API_URL}${response.data.download_url}`)
       }
@@ -67,10 +69,10 @@ function App() {
           <Col lg={7} xl={6}>
             <div className="mb-5">
               <h1 className="display-6 fw-normal mb-2" style={{ color: '#e0e0e0' }}>
-                Screenshot to Word
+                Screenshots to Word
               </h1>
               <p className="mb-0" style={{ color: '#9a9a9a' }}>
-                Convert screenshots to formatted documents
+                Upload multiple screenshots and convert them into one document
               </p>
             </div>
 
@@ -79,17 +81,19 @@ function App() {
                 <Form>
                   <Form.Group className="mb-3">
                     <Form.Label className="mb-2 small" style={{ color: '#c0c0c0' }}>
-                      Select Screenshot
+                      Select Screenshots
                     </Form.Label>
                     <Form.Control
                       type="file"
                       accept="image/*"
+                      multiple
                       onChange={handleFileSelect}
                       disabled={uploading}
                     />
-                    {selectedFile && (
+                    {selectedFiles.length > 0 && (
                       <Form.Text className="d-block mt-2" style={{ color: '#8a8a8a' }}>
-                        {selectedFile.name} ({(selectedFile.size / 1024).toFixed(2)} KB)
+                        {selectedFiles.length} file{selectedFiles.length > 1 ? 's' : ''} selected
+                        {' '}({(selectedFiles.reduce((sum, f) => sum + f.size, 0) / 1024).toFixed(2)} KB total)
                       </Form.Text>
                     )}
                   </Form.Group>
@@ -98,7 +102,7 @@ function App() {
                     <Button
                       variant="light"
                       onClick={handleUpload}
-                      disabled={!selectedFile || uploading}
+                      disabled={selectedFiles.length === 0 || uploading}
                       className="btn-dark-theme"
                     >
                       {uploading ? (
