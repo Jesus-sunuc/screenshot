@@ -1,0 +1,9 @@
+/test_images
+/uploads
+/outputs
+/api/.venv
+__pycache__/
+/client/node_modules
+/client/.pnpm-store
+/api/outputs
+/api/uploads
